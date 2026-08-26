@@ -1,0 +1,6 @@
+node_modules/
+*.traineddata
+.build/
+.swiftpm/
+xcuserdata/
+.DS_Store

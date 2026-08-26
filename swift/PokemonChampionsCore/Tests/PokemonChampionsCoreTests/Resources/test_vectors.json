@@ -1,0 +1,100 @@
+{
+  "description": "共用驗收向量：Node 原型與 Swift Package 必須對每一條向量產生相同輸出。乘數皆為 2 的冪次（0, 0.25, 0.5, 1, 2, 4），浮點比較可用相等判斷。",
+  "spec": {
+    "effectiveness": "effectiveness(attack, defense[]) = 對每個防禦屬性的剋制值連乘",
+    "lookup": "先精確比對 name_zh，再比對 name_en（不分大小寫），再比對 identifier（不分大小寫）；回傳 id",
+    "fuzzy": "僅對 name_zh 做 Levenshtein 編輯距離（以 Unicode scalar 為單位）；距離 ≤ 2 且 < 查詢長度；取最小距離，同距離取 id 最小者；精確命中優先",
+    "extract": "由左至右掃描文字，每個位置取『以該位置開頭、最長的圖鑑名稱』，命中後跳過該名稱長度；回傳命中 id 依出現順序，去除重複",
+    "normalize_ocr": "OCR 前處理：移除『兩個 CJK 字元（含全形括號 U+FF08/U+FF09）之間』的所有空白字元。extract_normalized 向量 = normalize 後再 extract"
+  },
+  "effectiveness": [
+    { "attack": "electric", "defense": ["water", "flying"], "expect": 4 },
+    { "attack": "electric", "defense": ["ground"], "expect": 0 },
+    { "attack": "electric", "defense": ["dragon", "ground"], "expect": 0 },
+    { "attack": "electric", "defense": ["electric"], "expect": 0.5 },
+    { "attack": "ground", "defense": ["flying"], "expect": 0 },
+    { "attack": "ground", "defense": ["fire", "rock"], "expect": 4 },
+    { "attack": "ground", "defense": ["grass", "bug"], "expect": 0.25 },
+    { "attack": "normal", "defense": ["ghost"], "expect": 0 },
+    { "attack": "normal", "defense": ["water"], "expect": 1 },
+    { "attack": "ghost", "defense": ["normal"], "expect": 0 },
+    { "attack": "ghost", "defense": ["psychic", "ghost"], "expect": 4 },
+    { "attack": "fighting", "defense": ["normal"], "expect": 2 },
+    { "attack": "fighting", "defense": ["ghost"], "expect": 0 },
+    { "attack": "fighting", "defense": ["flying", "psychic"], "expect": 0.25 },
+    { "attack": "fire", "defense": ["grass", "ice"], "expect": 4 },
+    { "attack": "fire", "defense": ["fire", "water"], "expect": 0.25 },
+    { "attack": "fire", "defense": ["dragon"], "expect": 0.5 },
+    { "attack": "water", "defense": ["fire", "ground"], "expect": 4 },
+    { "attack": "water", "defense": ["water", "grass"], "expect": 0.25 },
+    { "attack": "grass", "defense": ["water", "ground"], "expect": 4 },
+    { "attack": "grass", "defense": ["fire", "flying"], "expect": 0.25 },
+    { "attack": "ice", "defense": ["dragon", "flying"], "expect": 4 },
+    { "attack": "ice", "defense": ["water"], "expect": 0.5 },
+    { "attack": "dragon", "defense": ["fairy"], "expect": 0 },
+    { "attack": "fairy", "defense": ["dragon", "dark"], "expect": 4 },
+    { "attack": "poison", "defense": ["fairy", "grass"], "expect": 4 },
+    { "attack": "poison", "defense": ["steel"], "expect": 0 },
+    { "attack": "psychic", "defense": ["dark"], "expect": 0 },
+    { "attack": "dark", "defense": ["ghost", "psychic"], "expect": 4 },
+    { "attack": "bug", "defense": ["fire", "flying"], "expect": 0.25 },
+    { "attack": "rock", "defense": ["fire", "flying"], "expect": 4 },
+    { "attack": "steel", "defense": ["ice", "rock"], "expect": 4 },
+    { "attack": "steel", "defense": ["water"], "expect": 0.5 }
+  ],
+  "defensive_profile": [
+    {
+      "defense": ["fire", "flying"],
+      "expect_partial": {
+        "rock": 4, "water": 2, "electric": 2, "ground": 0,
+        "bug": 0.25, "grass": 0.25, "ice": 1, "fighting": 0.5
+      }
+    },
+    {
+      "defense": ["electric"],
+      "expect_partial": {
+        "ground": 2, "electric": 0.5, "flying": 0.5, "steel": 0.5, "normal": 1
+      }
+    },
+    {
+      "defense": ["dragon", "ground"],
+      "expect_partial": {
+        "ice": 4, "electric": 0, "dragon": 2, "fairy": 2, "water": 1
+      }
+    },
+    {
+      "defense": ["steel", "fairy"],
+      "expect_partial": {
+        "fire": 2, "ground": 2, "poison": 0, "dragon": 0,
+        "fighting": 1, "bug": 0.25
+      }
+    }
+  ],
+  "lookup": [
+    { "query": "皮卡丘", "expect_id": 25 },
+    { "query": "Pikachu", "expect_id": 25 },
+    { "query": "pikachu", "expect_id": 25 },
+    { "query": "噴火龍", "expect_id": 6 },
+    { "query": "妙蛙種子", "expect_id": 1 },
+    { "query": "耿鬼", "expect_id": 94 },
+    { "query": "快龍", "expect_id": 149 },
+    { "query": "烈咬陸鯊", "expect_id": 445 },
+    { "query": "雷丘（阿羅拉的樣子）", "expect_id": 10100 }
+  ],
+  "fuzzy": [
+    { "query": "皮卡兵", "expect_id": 25 },
+    { "query": "噴火竜", "expect_id": 6 },
+    { "query": "妙蛙種孑", "expect_id": 1 }
+  ],
+  "extract": [
+    { "text": "皮卡丘 Lv.50 vs 噴火龍 Lv.50", "expect_ids": [25, 6] },
+    { "text": "野生的雷丘（阿羅拉的樣子）出現了", "expect_ids": [10100] },
+    { "text": "對手派出了耿鬼！我方的快龍如何應對", "expect_ids": [94, 149] },
+    { "text": "沒有任何寶可夢名稱的句子", "expect_ids": [] }
+  ],
+  "extract_normalized": [
+    { "text": "噴火 龍 Lv.50 皮卡 丘 Lv.50", "expect_ids": [6, 25] },
+    { "text": "雷丘 （ 阿羅拉 的 樣子 ） 出現了", "expect_ids": [10100] },
+    { "text": "皮卡丘 使出了 十萬伏特", "expect_ids": [25] }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "pokemon-champions-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pokemon Champions 屬性即時查詢 — Node 原型（Phase 0）。與 Swift Package 共用 data/ 資料與驗收向量。",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "vs": "node src/cli.js vs",
+    "scan": "node src/cli.js scan"
+  },
+  "dependencies": {
+    "tesseract.js": "^6.0.1"
+  }
+}
