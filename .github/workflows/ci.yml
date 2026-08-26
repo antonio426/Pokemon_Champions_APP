@@ -1,0 +1,63 @@
+name: CI
+
+# Windows 上開發、雲端 Mac 上驗證。
+#
+#   - node job 在 Ubuntu 上跑，快且免費，驗證 Phase 0/1 的 JS 實作。
+#   - swift job 在 GitHub 提供的 macOS runner 上跑，編譯並測試 Swift 移植版。
+#     macOS runner 的用量計費是 Linux 的 10 倍，所以這個 job 只在真正碰到
+#     ios/ 或 data/ 時才啟動。公開 repo 則完全免費。
+#
+# 這個工作流程不做簽名，也不產生 .ipa —— 那是 release.yml 的事。
+# 分開的理由是：99% 的提交只需要知道「邏輯有沒有壞」，不需要花十分鐘打包。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  node:
+    name: Node（Phase 0/1 資料層）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 執行測試
+        run: npm test
+
+      - name: 檢查 Swift 資源是否與 data/ 同步
+        # 兩邊必須吃同一份資料，否則各自測試通過卻算出不同結果。
+        run: node scripts/sync-swift-data.mjs --check
+
+  swift:
+    name: Swift（核心資料層移植）
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 顯示工具鏈版本
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: 建置並測試（macOS）
+        # 純邏輯 package，不需要模擬器也不需要簽名，所以直接用 swift test，
+        # 這比走 xcodebuild + iOS 模擬器快得多。
+        working-directory: ios/PokemonChampionCore
+        run: swift test --enable-code-coverage
+
+      - name: 對 iOS 目標編譯一次
+        # swift test 跑的是 macOS 切片。這一步確認同一份程式碼也編得過 iOS，
+        # 避免「Mac 上好好的，進 Xcode 就爆」。
+        working-directory: ios/PokemonChampionCore
+        run: |
+          xcodebuild build \
+            -scheme PokemonChampionCore \
+            -destination 'generic/platform=iOS' \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO

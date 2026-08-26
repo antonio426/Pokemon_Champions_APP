@@ -1,0 +1,10 @@
+node_modules/
+.cache/
+data/pool.json
+
+# 真實對戰截圖含個人資訊（玩家名稱、好友碼），預設不進版控。
+# 要納管的話請自行放行特定檔案。
+fixtures/*.png
+fixtures/*.jpg
+fixtures/*.jpeg
+!fixtures/mock-battle.png
