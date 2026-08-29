@@ -46,8 +46,11 @@ struct TeamAnalysisView: View {
             }
             .navigationTitle("對戰分析")
             .sheet(item: $searchTarget) { target in
+                // 由呈現者這端關 sheet（把 item 設回 nil）。sheet 內部的
+                // dismiss() 在搜尋欄作用中時可能只收掉搜尋狀態而不是 sheet。
                 PokemonSearchSheet { entry in
                     store.add(entry, toMine: target == .mine)
+                    searchTarget = nil
                 }
             }
             .onChange(of: scenePhase) { phase in

@@ -20,3 +20,6 @@ ios/BroadcastExtension/Info.plist
 ios/BroadcastExtension/*.entitlements
 ios/build/
 DerivedData/
+
+# SwiftPM 本機建置快取
+.build/

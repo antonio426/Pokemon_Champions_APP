@@ -126,6 +126,17 @@ targets:
         com.apple.security.application-groups:
           - group.com.pokemonchampion.shared
 
+  PokemonChampionUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pokemonchampion.app.uitests
+    sources:
+      - path: UITests
+    dependencies:
+      - target: PokemonChampion
+
 schemes:
   PokemonChampion:
     build:
@@ -133,5 +144,8 @@ schemes:
         PokemonChampion: all
     run:
       config: Debug
+    test:
+      targets:
+        - PokemonChampionUITests
     archive:
       config: Release
