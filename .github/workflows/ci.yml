@@ -12,7 +12,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "claude/**"]
   pull_request:
   workflow_dispatch:
 
@@ -61,3 +61,43 @@ jobs:
             -destination 'generic/platform=iOS' \
             -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO
+
+  app:
+    name: iOS App（Phase 2 三個 target）
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安裝 XcodeGen
+        run: brew install xcodegen
+
+      - name: 生成 Xcode 專案
+        # .xcodeproj 不進版控，由 ios/project.yml 生成 —— 這裡就是驗證那份定義。
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: 建置主 App ＋ Widget ＋ Broadcast Extension（模擬器，不簽名）
+        working-directory: ios
+        run: |
+          xcodebuild build \
+            -project PokemonChampion.xcodeproj \
+            -scheme PokemonChampion \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: 打包模擬器版 .app
+        # 下載這個 artifact，解壓後拖進模擬器就能安裝：
+        #   xcrun simctl install booted PokemonChampion.app
+        working-directory: ios
+        run: |
+          APP=build/Build/Products/Debug-iphonesimulator/PokemonChampion.app
+          test -d "$APP"
+          ditto -c -k --keepParent "$APP" PokemonChampion-simulator.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PokemonChampion-simulator
+          path: ios/PokemonChampion-simulator.zip
+          retention-days: 30

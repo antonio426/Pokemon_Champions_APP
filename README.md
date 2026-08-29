@@ -1,12 +1,14 @@
-# 寶可夢對戰屬性即時查詢 — Phase 0 / Phase 1
+# 寶可夢對戰屬性即時查詢 — Phase 0 / Phase 1 / Phase 2
 
-依據《寶可夢屬性即時查詢App_專案規劃書》建置。這個 repo 涵蓋規劃書的前兩個階段：
+依據《寶可夢屬性即時查詢App_專案規劃書》建置。這個 repo 目前涵蓋：
 
 - **Phase 0｜可行性驗證** — 離線原型：截圖 → OCR 讀名稱 → 查屬性剋制 → 輸出結果，並附一支會給出數字的準確率量測工具。
 - **Phase 1｜核心資料層** — 屬性剋制計算、全國圖鑑（繁中）、賽季清單過濾，Node 與 **Swift 兩份實作**，測試互為驗收基準。
+- **Phase 2｜iOS App** — 完整的 SwiftUI 主 App（截圖辨識、隊伍分析、圖鑑、屬性查詢、賽季清單）＋
+  Live Activity／動態島 Widget ＋ Broadcast Upload Extension 鷹架。見下方「Phase 2：iOS App」。
 
-Swift 版在 [ios/PokemonChampionCore](ios/PokemonChampionCore)，透過 GitHub Actions 的
-macOS runner 編譯與測試 —— **不需要 Mac**。框架選擇與打包路線的完整說明見 [ios/README.md](ios/README.md)。
+Swift 版在 [ios/](ios/)，透過 GitHub Actions 的
+macOS runner 編譯與測試。框架選擇與打包路線的完整說明見 [ios/README.md](ios/README.md)。
 
 ---
 
@@ -82,9 +84,21 @@ $ node bin/pmc.mjs team 噴火龍,沙奈朵,耿鬼,暴鯉龍 水箭龜,班基拉
 ## Phase 0：辨識管線
 
 ```
-截圖 → 降取樣＋裁切 → Windows OCR (zh-Hant-TW) → 版面分邊 → 名稱正規化
+截圖 → 降取樣＋裁切 → OCR (zh-Hant) → 版面分邊 → 名稱正規化
      → 精確／模糊比對圖鑑 → 屬性剋制計算 → 摘要
 ```
+
+OCR 後端依平台派發（`src/ocr.mjs`）：
+
+| 平台 | 引擎 | 合成圖準確率 |
+|---|---|---|
+| Windows | Windows.Media.Ocr（`scripts/ocr.ps1`） | 11/12 |
+| macOS | **Vision `VNRecognizeTextRequest`**（`scripts/ocr-vision.swift`，惰性編譯進 `.cache/`） | **12/12** |
+
+macOS 後端跟 iOS App 用的是**同一個引擎** —— 在 Mac 上量到的準確率與行為，
+對 iOS 有直接參考價值（Windows OCR 的數字只能當同類引擎的近似）。
+陷阱一則：舊 SDK 連結時 Vision 預設 revision 1 只認英文，
+`ocr-vision.swift` 顯式設了執行期支援的最大 revision。
 
 ### 為什麼用 Windows OCR 而不是 Tesseract
 
@@ -220,6 +234,38 @@ node bin/pmc.mjs --pool data/pool.example.json find 妙蛙化
 
 ---
 
+## Phase 2：iOS App
+
+`ios/` 底下是完整的三 target Xcode 專案，`.xcodeproj` 不進版控，由
+[ios/project.yml](ios/project.yml) 生成：
+
+```bash
+brew install xcodegen
+cd ios && xcodegen generate && open PokemonChampion.xcodeproj
+```
+
+| Target | 內容 | 狀態 |
+|---|---|---|
+| **PokemonChampion**（主 App） | 五個分頁：對戰分析（隊伍矩陣＋威脅／解答）、截圖辨識（Vision OCR，`pmc shot` 的圖形版，內建範例圖）、圖鑑（模糊搜尋＋攻防總表）、屬性相剋查詢、設定（賽季清單＋直播入口） | 可用 |
+| **BattleWidgetExtension** | Live Activity／動態島：一行威脅、一行解答，`ContentState` 直接用核心層的 `LiveSummary` | 可用（App 內手動啟動） |
+| **BroadcastUploadExtension** | ReplayKit 錄影上傳：每 2 秒辨識一幀 → 寫進 App Group。規劃書 Phase 3 的鷹架 | 需真機＋簽名驗證 |
+
+管線的分邊／解析／去重邏輯已下沉到核心 package（`Recognition.swift`），
+與 Node 版的 `pipeline.mjs` 一對一，由 `swift test` 驗證 —— App 與 Broadcast
+Extension 只負責把 Vision 的輸出餵進去。
+
+CI 的 `app` job 會在 macOS runner 上生成專案並建置全部三個 target（模擬器、
+不簽名），並上傳 `PokemonChampion-simulator` artifact —— 下載解壓後：
+
+```bash
+xcrun simctl install booted PokemonChampion.app
+```
+
+上真機需要 Apple Developer Program（App Group 與 Live Activity 都不能用免費簽名），
+並把三份 entitlements 與 `AppGroup.identifier` 裡的 group id 換成自己 Team 的。
+
+---
+
 ## 測試
 
 ```bash
@@ -258,8 +304,14 @@ scripts/
   sync-swift-data.mjs 把 data/ 同步進 Swift package
 test/                 53 項測試
 bin/pmc.mjs           CLI
-ios/PokemonChampionCore/  Swift 移植（見 ios/README.md）
-.github/workflows/ci.yml  Ubuntu 跑 Node、macOS runner 跑 Swift
+ios/
+  project.yml             Xcode 專案定義（xcodegen generate 生成 .xcodeproj）
+  PokemonChampionCore/    核心 Swift package（見 ios/README.md）
+  App/                    主 App（SwiftUI，五個分頁）
+  Shared/                 App 與 Extension 共用（Vision 讀取器、ActivityAttributes、App Group）
+  BattleWidget/           Live Activity／動態島 Widget Extension
+  BroadcastExtension/     ReplayKit Broadcast Upload Extension（Phase 3 鷹架）
+.github/workflows/ci.yml  Ubuntu 跑 Node、macOS runner 跑 Swift 測試與 App 建置
 ```
 
 ---
@@ -305,8 +357,11 @@ Swift，並檢查兩邊的資料檔有沒有漏同步。
 - **圖示比對**（規劃書 Phase 0 的第二個驗收項目：20 隻常見寶可夢 Top-1 ≥ 80%）。
   需要對手圖示的參考圖庫與真實截圖才有辦法建立與量測；`data/pokedex.json` 已經
   存好每一筆的 `sprite` URL，可以直接拿來建參考庫。
-- **真實截圖的準確率數字** —— 見上面 Phase 0 那段。
-- **Swift 版的編譯驗證** —— 需要推上 GitHub 讓 macOS runner 跑一次。
-- **Phase 2 之後** —— Xcode 專案（主 App + Broadcast Extension + Widget Extension）
-  需要一次 Mac 或雲端 Mac 的互動 session 建立；Phase 3 與 Phase 6 的記憶體與真機測試
-  需要 Instruments。其餘階段都能在 Windows 上完成，說明見 [ios/README.md](ios/README.md)。
+- **真實截圖的準確率數字** —— 見上面 Phase 0 那段。Vision 在真機上的最佳降取樣率
+  也要重量一次（Phase 0 的 0.4× 是 Windows OCR 的曲線）。
+- **Swift 版的編譯驗證** —— 需要推上 GitHub 讓 macOS runner 跑一次
+  （CI 已含核心測試與三個 target 的完整建置）。
+- **Phase 3：Broadcast Extension 的真機驗證** —— 50MB 記憶體上限需要
+  Apple Developer Program、真機與 Instruments。鷹架已寫好
+  （`ios/BroadcastExtension/`），已知的開放問題（Extension 不能啟動
+  Live Activity、不經 APNs 的即時更新）記在原始碼註解與 [ios/README.md](ios/README.md)。

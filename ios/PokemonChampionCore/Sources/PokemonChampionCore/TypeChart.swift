@@ -182,6 +182,7 @@ public struct OffenseProfile: Sendable {
     public let via: [PokemonType: PokemonType]
 
     public init(types: [PokemonType], chart: TypeChart = .shared) {
+        precondition(!types.isEmpty, "OffenseProfile 至少需要一個攻擊屬性")
         self.types = types
         var best: [PokemonType: Double] = [:]
         var source: [PokemonType: PokemonType] = [:]
