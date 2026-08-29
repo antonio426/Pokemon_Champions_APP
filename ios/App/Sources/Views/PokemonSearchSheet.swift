@@ -8,6 +8,8 @@ struct PokemonSearchSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
+    // 訂閱清單狀態，清單變更時結果跟著刷新。
+    @EnvironmentObject private var pool: SeasonPoolStore
 
     private var results: [PokedexMatch] {
         guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
@@ -21,6 +23,11 @@ struct PokemonSearchSheet: View {
                     Text("輸入繁中、英文或日文名稱；打錯字也沒關係，模糊比對會救回來。")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
+                    if pool.enabled {
+                        Text("賽季清單生效中（\(pool.expandedCount) 個條目）")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
                 ForEach(Array(results.enumerated()), id: \.element.entry.id) { _, match in
                     Button {

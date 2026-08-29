@@ -30,6 +30,13 @@ struct TeamAnalysisView: View {
                     }
                     ThreatAnswerSections(matchup: matchup)
                 } else {
+                    // 沒有分析結果、但動態島還釘著（例如把隊伍清空了）——
+                    // 結束鈕必須留在畫面上，不能讓卡片變成關不掉的孤兒。
+                    if liveActivity.isRunning {
+                        Section("動態島") {
+                            Button("結束動態島", role: .destructive) { liveActivity.end() }
+                        }
+                    }
                     Section {
                         EmptyHint(icon: "shield.lefthalf.filled",
                                   title: "兩邊都放至少一隻",

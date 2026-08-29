@@ -93,6 +93,12 @@ final class SeasonPoolStore: ObservableObject {
     /// 目前清單展開後的條目數（同物種的所有形態都會納入）。
     var expandedCount: Int { Pokedex.shared.currentPool?.entries.count ?? 0 }
 
+    /// 清單裡一個條目都對不到的名稱 —— 幾乎都是錯字。清單比對是精確命中，
+    /// 錯字不會被模糊比對救，一定要讓使用者看得到。
+    var unresolvedNames: [String] {
+        names.filter { Pokedex.shared.exactEntries(for: $0).isEmpty }
+    }
+
     func applyToPokedex() {
         if enabled, !names.isEmpty {
             Pokedex.shared.setPool(names: names, label: "自訂賽季")

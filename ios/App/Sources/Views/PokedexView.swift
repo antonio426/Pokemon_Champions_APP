@@ -5,6 +5,8 @@ import PokemonChampionCore
 /// CLI `pmc who` / `pmc find` 的圖形版。
 struct PokedexView: View {
     @State private var query = ""
+    // 訂閱清單狀態：設定頁改了賽季清單，這裡的搜尋結果才會跟著刷新。
+    @EnvironmentObject private var pool: SeasonPoolStore
 
     private var searchResults: [PokedexMatch] {
         guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
@@ -14,6 +16,11 @@ struct PokedexView: View {
     var body: some View {
         NavigationStack {
             List {
+                if pool.enabled {
+                    Text("賽季清單生效中（\(pool.expandedCount) 個條目）—— 搜尋只在清單內比對")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
                 if query.isEmpty {
                     // List 是懶載入，直接放全圖鑑（預設形態）也不會卡。
                     ForEach(defaultEntries) { entry in

@@ -11,6 +11,8 @@ struct ScreenshotAnalysisView: View {
     @State private var pickedItem: PhotosPickerItem?
     @State private var previewImage: UIImage?
     @State private var state: AnalysisState = .idle
+    /// 快速連選兩張時，先跑完的舊任務不能蓋掉新任務的結果。
+    @State private var analysisToken = UUID()
 
     enum AnalysisState {
         case idle
@@ -51,6 +53,8 @@ struct ScreenshotAnalysisView: View {
             .navigationTitle("截圖辨識")
             .onChange(of: pickedItem) { item in
                 guard let item else { return }
+                // 立刻清空選取，之後重選「同一張」也會再觸發 onChange。
+                pickedItem = nil
                 Task { await loadPickedImage(item) }
             }
         }
@@ -155,17 +159,35 @@ struct ScreenshotAnalysisView: View {
     }
 
     private func analyze(_ image: UIImage) async {
+        let token = UUID()
+        analysisToken = token
         previewImage = image
-        guard let cgImage = image.cgImage else {
+        // cgImage 不帶 EXIF 方向 —— 相機拍的照片（例如翻拍別台裝置的畫面）
+        // 可能整張是轉 90° 的，先攤平成 .up 再進 OCR。
+        guard let cgImage = image.normalizedUp()?.cgImage else {
             state = .failed("讀不到圖片內容")
             return
         }
         do {
             let result = try await VisionTeamReader.analyze(cgImage)
+            guard analysisToken == token else { return }   // 已有更新的分析在跑
             state = .done(reading: result.reading, matchup: result.matchup,
                           summary: result.summary, ocrMs: result.ocrMs)
         } catch {
+            guard analysisToken == token else { return }
             state = .failed("辨識失敗：\(error.localizedDescription)")
+        }
+    }
+}
+
+private extension UIImage {
+    /// 把 EXIF 方向攤平：回傳像素即為顯示方向（orientation == .up）的版本。
+    func normalizedUp() -> UIImage? {
+        if imageOrientation == .up { return self }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            draw(in: CGRect(origin: .zero, size: size))
         }
     }
 }

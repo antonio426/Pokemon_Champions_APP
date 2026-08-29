@@ -7,9 +7,9 @@ public struct Combatant: Sendable, Hashable {
     public let entryId: Int?
 
     public init(label: String, types: [PokemonType], entryId: Int? = nil) {
-        // bestSTAB 與 OffenseProfile 都會取 types[0]；空陣列在這裡就擋下來，
-        // 錯誤才會指向真正的呼叫端，而不是深處的陣列索引。
-        precondition(!types.isEmpty, "Combatant 至少要有一個屬性")
+        // bestSTAB 會取 types[0]、TypeChart 只接受 1–2 個防禦屬性；
+        // 整個不變量在這裡擋下來，錯誤才會指向真正的呼叫端，而不是深處的陣列索引。
+        precondition((1...2).contains(types.count), "Combatant 必須有 1–2 個屬性")
         self.label = label
         self.types = types
         self.entryId = entryId
@@ -148,7 +148,7 @@ public enum Matchup {
                     }
                     return a.offset < b.offset
                 }
-                .map(\.element)
+                .map { $0.element }
         }
 
         // 威脅：先看能超效打中幾隻，再看最重的一擊。
@@ -169,7 +169,7 @@ public enum Matchup {
                 if a.element.peak != b.element.peak { return a.element.peak > b.element.peak }
                 return a.offset < b.offset
             }
-            .map(\.element)
+            .map { $0.element }
 
         // 解答：能超效打到最多對手，且盡量不被超效反打。
         var answers: [AnswerEntry] = []
@@ -192,7 +192,7 @@ public enum Matchup {
                 }
                 return a.offset < b.offset
             }
-            .map(\.element)
+            .map { $0.element }
 
         return TeamMatchup(mine: mine, theirs: theirs, matrix: matrix, threats: threats, answers: answers)
     }

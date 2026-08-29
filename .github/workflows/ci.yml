@@ -3,9 +3,9 @@ name: CI
 # Windows 上開發、雲端 Mac 上驗證。
 #
 #   - node job 在 Ubuntu 上跑，快且免費，驗證 Phase 0/1 的 JS 實作。
-#   - swift job 在 GitHub 提供的 macOS runner 上跑，編譯並測試 Swift 移植版。
-#     macOS runner 的用量計費是 Linux 的 10 倍，所以這個 job 只在真正碰到
-#     ios/ 或 data/ 時才啟動。公開 repo 則完全免費。
+#   - swift／app job 在 GitHub 提供的 macOS runner 上跑，編譯並測試 Swift 端。
+#     公開 repo 免費；若轉私有（macOS 計費是 Linux 的 10 倍），再考慮加
+#     paths 過濾讓 macOS job 只在碰到 ios/ 或 data/ 時啟動。
 #
 # 這個工作流程不做簽名，也不產生 .ipa —— 那是 release.yml 的事。
 # 分開的理由是：99% 的提交只需要知道「邏輯有沒有壞」，不需要花十分鐘打包。

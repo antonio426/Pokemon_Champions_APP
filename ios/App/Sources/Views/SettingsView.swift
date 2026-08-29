@@ -21,6 +21,12 @@ struct SettingsView: View {
                             Button("載入範例清單") { pool.loadExample() }
                                 .font(.caption)
                         }
+                        if !pool.unresolvedNames.isEmpty {
+                            Label("無法辨識（可能是錯字）：\(pool.unresolvedNames.joined(separator: "、"))",
+                                  systemImage: "exclamationmark.triangle")
+                                .font(.caption)
+                                .foregroundColor(.orange)
+                        }
                     }
                 } header: {
                     Text("賽季清單")

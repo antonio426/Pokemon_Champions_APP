@@ -15,6 +15,18 @@ public enum AppGroup {
 
     private static let summaryFile = "live-summary.json"
 
+    /// Extension 留下的分析結果，帶寫入時間 —— App 端要用它判斷「這是這一場的，
+    /// 還是上一場遺留的」，否則回前景時舊資料會蓋掉剛釘上的動態島。
+    public struct SharedSummary: Codable {
+        public let summary: LiveSummary
+        public let writtenAt: Date
+
+        public init(summary: LiveSummary, writtenAt: Date = Date()) {
+            self.summary = summary
+            self.writtenAt = writtenAt
+        }
+    }
+
     public static var containerURL: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: identifier)
     }
@@ -22,14 +34,14 @@ public enum AppGroup {
     /// Extension 端：寫入最新分析結果。沒有 entitlement（例如未簽名的模擬器建置）就靜默跳過。
     public static func writeSummary(_ summary: LiveSummary) {
         guard let url = containerURL?.appendingPathComponent(summaryFile),
-              let data = try? JSONEncoder().encode(summary) else { return }
+              let data = try? JSONEncoder().encode(SharedSummary(summary: summary)) else { return }
         try? data.write(to: url, options: .atomic)
     }
 
-    /// App 端：讀取 Extension 留下的最新結果。
-    public static func readSummary() -> LiveSummary? {
+    /// App 端：讀取 Extension 留下的最新結果（含寫入時間）。
+    public static func readSummary() -> SharedSummary? {
         guard let url = containerURL?.appendingPathComponent(summaryFile),
               let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(LiveSummary.self, from: data)
+        return try? JSONDecoder().decode(SharedSummary.self, from: data)
     }
 }

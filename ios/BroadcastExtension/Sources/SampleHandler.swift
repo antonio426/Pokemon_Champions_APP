@@ -28,7 +28,6 @@ final class SampleHandler: RPBroadcastSampleHandler {
     /// 幾秒處理一幀。對戰畫面的隊伍名單不會每秒都變，2 秒已經夠即時。
     private let processInterval: TimeInterval = 2.0
     private var lastProcessed = Date.distantPast
-    private var busy = false
 
     private let layout = BattleLayout.battlePrepSplit
 
@@ -37,12 +36,14 @@ final class SampleHandler: RPBroadcastSampleHandler {
         guard sampleBufferType == .video else { return }
 
         let now = Date()
-        guard !busy, now.timeIntervalSince(lastProcessed) >= processInterval else { return }
+        guard now.timeIntervalSince(lastProcessed) >= processInterval else { return }
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
         lastProcessed = now
-        busy = true
-        defer { busy = false }
+        // 刻意「同步」在 ReplayKit 的回呼執行緒上辨識：處理期間 ReplayKit 自己會丟幀，
+        // 這正是我們要的節流；改成非同步反而得把 CVPixelBuffer 留過回呼生命週期，
+        // 會扣住 ReplayKit 的 buffer pool —— 在 50MB 配額裡這比阻塞更危險。
+        // OCR 實際耗時（與是否需要降取樣）是 Phase 3 真機量測的重點項目。
 
         // 被錄的是「前景的那個遊戲」，不是本 App —— 橫向遊戲的影格會帶方向附件，
         // 忽略它的話文字是轉了 90° 的，zh-Hant 什麼都認不出來。
@@ -92,7 +93,9 @@ final class SampleHandler: RPBroadcastSampleHandler {
         }
 
         let (reading, _, summary) = Recognition.analyze(lines: lines, layout: layout)
-        guard !reading.isEmpty, let summary else { return }
+        // 只在「雙方都認得」時覆寫。切去選單、結算畫面時常常只剩單邊或零星文字，
+        // 那種幀寫進去會把上一份完整戰況換成空殼摘要。
+        guard !reading.mine.isEmpty, !reading.theirs.isEmpty, let summary else { return }
         AppGroup.writeSummary(summary)
     }
 
