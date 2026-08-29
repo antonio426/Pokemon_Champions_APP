@@ -31,13 +31,14 @@ struct PokemonSearchSheet: View {
                 }
                 ForEach(Array(results.enumerated()), id: \.element.entry.id) { _, match in
                     Button {
+                        // 關閉 sheet 是呈現者的責任（見 TeamAnalysisView）。
                         onPick(match.entry)
-                        dismiss()
                     } label: {
                         PokemonRow(entry: match.entry,
                                    subtitle: match.exact ? nil : "相似度 \(Int(match.score * 100))%")
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("search-result-\(match.entry.id)")
                 }
                 if !query.isEmpty && results.isEmpty {
                     Text("找不到「\(query)」—— 若有設定賽季清單，可能不在清單內。")
