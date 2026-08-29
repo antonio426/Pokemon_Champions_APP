@@ -7,6 +7,9 @@ public struct Combatant: Sendable, Hashable {
     public let entryId: Int?
 
     public init(label: String, types: [PokemonType], entryId: Int? = nil) {
+        // bestSTAB 會取 types[0]、TypeChart 只接受 1–2 個防禦屬性；
+        // 整個不變量在這裡擋下來，錯誤才會指向真正的呼叫端，而不是深處的陣列索引。
+        precondition((1...2).contains(types.count), "Combatant 必須有 1–2 個屬性")
         self.label = label
         self.types = types
         self.entryId = entryId
@@ -135,6 +138,19 @@ public enum Matchup {
             }
         }
 
+        // Node 版靠 JS sort 的穩定性讓同分者維持隊伍順序；Swift 的 sort 不保證穩定，
+        // 所以這裡所有排序都帶原始索引當決勝值 —— 兩邊的動態島才會唸出同一個名字。
+        func stableByMultiplier(_ hits: [ThreatEntry.Hit]) -> [ThreatEntry.Hit] {
+            hits.enumerated()
+                .sorted { a, b in
+                    if a.element.multiplier != b.element.multiplier {
+                        return a.element.multiplier > b.element.multiplier
+                    }
+                    return a.offset < b.offset
+                }
+                .map { $0.element }
+        }
+
         // 威脅：先看能超效打中幾隻，再看最重的一擊。
         var threats: [ThreatEntry] = []
         for (j, b) in theirs.enumerated() {
@@ -144,13 +160,16 @@ public enum Matchup {
                                   multiplier: matrix[i][j].incoming,
                                   via: matrix[i][j].incomingVia))
             }
-            hits.sort { $0.multiplier > $1.multiplier }
+            hits = stableByMultiplier(hits)
             threats.append(ThreatEntry(combatant: b, hits: hits, peak: hits.first?.multiplier ?? 0))
         }
-        threats.sort { a, b in
-            if a.count != b.count { return a.count > b.count }
-            return a.peak > b.peak
-        }
+        threats = threats.enumerated()
+            .sorted { a, b in
+                if a.element.count != b.element.count { return a.element.count > b.element.count }
+                if a.element.peak != b.element.peak { return a.element.peak > b.element.peak }
+                return a.offset < b.offset
+            }
+            .map { $0.element }
 
         // 解答：能超效打到最多對手，且盡量不被超效反打。
         var answers: [AnswerEntry] = []
@@ -161,14 +180,19 @@ public enum Matchup {
                                   multiplier: matrix[i][j].outgoing,
                                   via: matrix[i][j].outgoingVia))
             }
-            hits.sort { $0.multiplier > $1.multiplier }
+            hits = stableByMultiplier(hits)
             let worst = theirs.indices.map { matrix[i][$0].incoming }.max() ?? 0
             answers.append(AnswerEntry(combatant: a, hits: hits, worstIncoming: worst))
         }
-        answers.sort { a, b in
-            if a.count != b.count { return a.count > b.count }
-            return a.worstIncoming < b.worstIncoming
-        }
+        answers = answers.enumerated()
+            .sorted { a, b in
+                if a.element.count != b.element.count { return a.element.count > b.element.count }
+                if a.element.worstIncoming != b.element.worstIncoming {
+                    return a.element.worstIncoming < b.element.worstIncoming
+                }
+                return a.offset < b.offset
+            }
+            .map { $0.element }
 
         return TeamMatchup(mine: mine, theirs: theirs, matrix: matrix, threats: threats, answers: answers)
     }

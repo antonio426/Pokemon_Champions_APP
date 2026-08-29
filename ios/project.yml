@@ -1,0 +1,137 @@
+# Phase 2：Xcode 專案定義（XcodeGen）
+#
+# .xcodeproj 不進版控 —— 它由這份檔案生成，衝突地獄與手殘改壞的風險都留在生成端：
+#
+#   brew install xcodegen
+#   cd ios && xcodegen generate
+#
+# 三個 target 對應規劃書的架構：
+#   PokemonChampion            主 App（截圖匯入、隊伍分析、圖鑑、設定）
+#   BattleWidgetExtension      Live Activity／動態島（Phase 4 的 UI 已先建好）
+#   BroadcastUploadExtension   ReplayKit 錄影上傳（Phase 3 的鷹架，記憶體驗證需要真機）
+#
+# 簽名：CI 用 CODE_SIGNING_ALLOWED=NO 建模擬器版，不需要帳號。
+# 要上真機／TestFlight 時，在 Xcode 的 Signing & Capabilities 選 Team 即可
+# （App Group 與 Live Activity 需要付費的 Apple Developer Program）。
+name: PokemonChampion
+options:
+  deploymentTarget:
+    iOS: "16.2"   # Live Activity 需要 16.1；16.2 起有正式的 ActivityContent API
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: 0.2.0
+    CURRENT_PROJECT_VERSION: 1
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    # 只支援 iPhone：產品核心是動態島。這同時避開「iPad 上直向鎖定
+    # 而未宣告 UIRequiresFullScreen 會被 App Store 上架驗證拒絕」的規則。
+    TARGETED_DEVICE_FAMILY: 1
+
+packages:
+  PokemonChampionCore:
+    path: PokemonChampionCore
+
+targets:
+  PokemonChampion:
+    type: application
+    platform: iOS
+    settings:
+      base:
+        # Extension 的 bundle id 必須是主 App id 的子層級，安裝時才過得了驗證。
+        PRODUCT_BUNDLE_IDENTIFIER: com.pokemonchampion.app
+        # 沒有這行，Assets 裡的 AccentColor 只是個沒人引用的色票。
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    sources:
+      - path: App/Sources
+      - path: App/Resources
+      - path: Shared
+    dependencies:
+      - package: PokemonChampionCore
+      - target: BattleWidgetExtension
+        embed: true
+      - target: BroadcastUploadExtension
+        embed: true
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: 寶可夢對戰助手
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSSupportsLiveActivities: true
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        ITSAppUsesNonExemptEncryption: false
+    entitlements:
+      path: App/PokemonChampion.entitlements
+      properties:
+        # 真機上要把這個 group 換成自己 Team 可用的 id，三個 target 一起換。
+        com.apple.security.application-groups:
+          - group.com.pokemonchampion.shared
+
+  BattleWidgetExtension:
+    type: app-extension
+    platform: iOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pokemonchampion.app.widgets
+    sources:
+      - path: BattleWidget/Sources
+      - path: Shared/BattleActivityAttributes.swift
+      - path: Shared/AppGroup.swift
+    dependencies:
+      - package: PokemonChampionCore
+    info:
+      path: BattleWidget/Info.plist
+      properties:
+        CFBundleDisplayName: 對戰動態島
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: BattleWidget/BattleWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.pokemonchampion.shared
+
+  BroadcastUploadExtension:
+    type: app-extension
+    platform: iOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pokemonchampion.app.broadcast
+    sources:
+      - path: BroadcastExtension/Sources
+      - path: Shared/VisionTeamReader.swift
+      - path: Shared/AppGroup.swift
+    dependencies:
+      - package: PokemonChampionCore
+    info:
+      path: BroadcastExtension/Info.plist
+      properties:
+        CFBundleDisplayName: 對戰畫面辨識
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.broadcast-services-upload
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).SampleHandler
+          NSExtensionAttributes:
+            RPBroadcastProcessMode: RPBroadcastProcessModeSampleBuffer
+    entitlements:
+      path: BroadcastExtension/BroadcastExtension.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.pokemonchampion.shared
+
+schemes:
+  PokemonChampion:
+    build:
+      targets:
+        PokemonChampion: all
+    run:
+      config: Debug
+    archive:
+      config: Release

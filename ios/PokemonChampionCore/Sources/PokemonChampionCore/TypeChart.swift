@@ -59,11 +59,15 @@ public final class TypeChart: @unchecked Sendable {
     }
 
     private init() {
-        guard let url = Bundle.module.url(forResource: "types", withExtension: "json"),
-              let data = try? Data(contentsOf: url),
-              let file = try? JSONDecoder().decode(File.self, from: data)
-        else {
-            fatalError("PokemonChampionCore: 無法載入 types.json —— 資源沒有被打包進 bundle")
+        guard let url = Bundle.module.url(forResource: "types", withExtension: "json") else {
+            fatalError("PokemonChampionCore: types.json 沒有被打包進 bundle")
+        }
+        let file: File
+        do {
+            file = try JSONDecoder().decode(File.self, from: try Data(contentsOf: url))
+        } catch {
+            // 資料由 scripts/sync-swift-data.mjs 再生，schema 打錯時要看得到真正的欄位錯誤。
+            fatalError("PokemonChampionCore: types.json 解碼失敗 —— \(error)")
         }
 
         precondition(file.order == PokemonType.allCases,
@@ -182,6 +186,7 @@ public struct OffenseProfile: Sendable {
     public let via: [PokemonType: PokemonType]
 
     public init(types: [PokemonType], chart: TypeChart = .shared) {
+        precondition(!types.isEmpty, "OffenseProfile 至少需要一個攻擊屬性")
         self.types = types
         var best: [PokemonType: Double] = [:]
         var source: [PokemonType: PokemonType] = [:]

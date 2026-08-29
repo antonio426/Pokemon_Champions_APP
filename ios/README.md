@@ -108,14 +108,45 @@ CI 會跑 `--check` 版本，漏同步就讓建置失敗。
 
 ---
 
+## Phase 2 已完成：三個 target 的 Xcode 專案
+
+規劃書 Phase 2 的「建 Xcode 專案（主 App + Broadcast Extension + Widget Extension）」
+已經做完，而且**不需要互動式 Xcode session** —— 專案由 [project.yml](project.yml)
+（XcodeGen）定義，`.xcodeproj` 是生成物：
+
+```bash
+brew install xcodegen
+cd ios && xcodegen generate
+```
+
+```
+ios/
+  project.yml           三個 target 的完整定義（bundle id、entitlements、Info.plist 都在這）
+  App/                  主 App：對戰分析、截圖辨識（Vision）、圖鑑、屬性、設定
+  Shared/               跨 target 共用：VisionTeamReader、BattleActivityAttributes、AppGroup
+  BattleWidget/         Live Activity／動態島
+  BroadcastExtension/   ReplayKit SampleHandler（Phase 3 鷹架，記憶體策略見原始碼註解）
+```
+
+管線邏輯（分邊、解析、去重）在核心 package 的 `Recognition.swift`，有測試；
+App 與 Extension 只把 Vision 的輸出餵進去。CI 的 `app` job 會建置全部三個
+target 並上傳模擬器版 .app artifact。
+
+### 已知的 Phase 3 開放問題（規劃書標記的最高風險，需真機驗證）
+
+- Broadcast Extension 的 50MB 上限：SampleHandler 已用「節流 + CVPixelBuffer 直送
+  + regionOfInterest + autoreleasepool」的組合把配置壓到最低，但數字要 Instruments 量。
+- **Extension 不能啟動 Live Activity**，目前走「App 先啟動 → Extension 寫 App Group →
+  App 回前景時更新」。真正的即時更新要嘛走 ActivityKit push（需要伺服器），
+  要嘛接受回前景才刷新 —— 這個取捨要在 Phase 3 用真機做了才能拍板。
+
 ## 下一步
 
-1. **建 GitHub repo 並推上去** —— CI 一跑，就會知道這份 Swift 移植編不編得過。
-   目前這台機器沒有 Swift 工具鏈，**這些 Swift 程式碼還沒有被任何編譯器看過**。
-2. 付 Apple Developer Program，取得 Team ID。
-3. 建 Xcode 專案（主 App + Broadcast Extension + Widget Extension 三個 target），
-   加入這個 package。這一步需要 Mac 或雲端 Mac 的互動 session 做一次。
-4. Phase 3：Extension 的記憶體壓力測試。這是需要真機 + Instruments 的第一個關卡。
+1. **推上 GitHub 讓 CI 跑一次** —— Node 測試在這台 Mac 已驗證（53/53），
+   Swift 部分（核心測試 + 三個 target 建置）要 macOS runner 給答案。
+2. 付 Apple Developer Program，取得 Team ID；把 `project.yml` 三處 entitlements 與
+   `Shared/AppGroup.swift` 的 group id 換成自己 Team 可用的值。
+3. Phase 3：Extension 的記憶體壓力測試。這是需要真機 + Instruments 的第一個關卡。
 
 > 如果想在 Windows 上先確認 Swift 編得過，可以裝
 > [Swift for Windows](https://www.swift.org/install/windows/)。它跑得動這個 package 的

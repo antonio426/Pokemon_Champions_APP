@@ -45,6 +45,9 @@ public final class Pokedex: @unchecked Sendable {
     private let exactIndex: [String: [PokedexEntry]]
     private let byId: [Int: PokedexEntry]
 
+    /// `@unchecked Sendable` 的唯一可變狀態。設定頁改清單時，Broadcast Extension
+    /// 可能正在另一條執行緒上 resolve —— 所有存取都得過這把鎖。
+    private let poolLock = NSLock()
     private var pool: SeasonPool?
 
     private struct File: Decodable {
@@ -53,11 +56,15 @@ public final class Pokedex: @unchecked Sendable {
     }
 
     private init() {
-        guard let url = Bundle.module.url(forResource: "pokedex", withExtension: "json"),
-              let data = try? Data(contentsOf: url),
-              let file = try? JSONDecoder().decode(File.self, from: data)
-        else {
-            fatalError("PokemonChampionCore: 無法載入 pokedex.json —— 資源沒有被打包進 bundle")
+        guard let url = Bundle.module.url(forResource: "pokedex", withExtension: "json") else {
+            fatalError("PokemonChampionCore: pokedex.json 沒有被打包進 bundle")
+        }
+        let file: File
+        do {
+            file = try JSONDecoder().decode(File.self, from: try Data(contentsOf: url))
+        } catch {
+            // 資料由 scripts/sync-swift-data.mjs 再生，schema 打錯時要看得到真正的欄位錯誤。
+            fatalError("PokemonChampionCore: pokedex.json 解碼失敗 —— \(error)")
         }
 
         self.entries = file.entries
@@ -80,17 +87,24 @@ public final class Pokedex: @unchecked Sendable {
     // MARK: - 正規化
 
     /// OCR 的輸出從來不乾淨：等級前綴、性別符號、全形空白、標點都要清掉。
-    /// 只保留文字與數字 —— `alphanumerics` 已涵蓋漢字、假名與長音符號 ー，
-    /// 而 ♂♀ 屬於符號類，會被一併濾除。
+    ///
+    /// 逐步鏡射 Node 版（src/pokedex.mjs 的 `normalize`）：NFKC → 去等級 → 白名單。
+    /// 白名單刻意用同一個 script 正則，而不是 `CharacterSet.alphanumerics` ——
+    /// alphanumerics 會多留下希臘、諺文、注音等雜訊字元，讓兩邊對同一個
+    /// OCR 髒字串算出不同的比對結果。長音符號 ー 屬於 Script=Common，要單獨列。
     public static func normalize(_ text: String) -> String {
-        let folded = text.precomposedStringWithCompatibilityMapping
+        let folded = text.precomposedStringWithCompatibilityMapping   // ≈ NFKC
         let withoutLevel = folded.replacingOccurrences(
-            of: "[Ll][Vv]\\.?\\s*\\d+",
+            of: "[Ll][Vv]\\.?\\s*[0-9]+",
             with: "",
             options: .regularExpression
         )
-        let kept = withoutLevel.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }
-        return String(String.UnicodeScalarView(kept)).lowercased()
+        let kept = withoutLevel.replacingOccurrences(
+            of: "[^\\p{Script=Han}\\p{Script=Katakana}\\p{Script=Hiragana}\\p{Script=Latin}\\p{Nd}ー]",
+            with: "",
+            options: .regularExpression
+        )
+        return kept.lowercased()
     }
 
     // MARK: - 賽季清單
@@ -106,21 +120,40 @@ public final class Pokedex: @unchecked Sendable {
                 selected.append(e)
             }
         }
-        pool = selected.isEmpty ? nil : SeasonPool(name: label, entries: selected)
-        return pool
+        // 一個名字都對不上時「保留空清單」而不是退回全圖鑑 —— 與 Node 版一致：
+        // 空清單會讓所有查詢落空，錯誤看得見；silently 掃全圖鑑則是看不見的準確率退化。
+        let newPool = SeasonPool(name: label, entries: selected)
+        setPool(newPool)
+        return newPool
     }
 
     @discardableResult
     public func setPool(ids: [Int], label: String = "custom") -> SeasonPool? {
         let selected = ids.compactMap { byId[$0] }
-        pool = selected.isEmpty ? nil : SeasonPool(name: label, entries: selected)
+        let newPool = SeasonPool(name: label, entries: selected)
+        setPool(newPool)
+        return newPool
+    }
+
+    /// 這個名稱精確對得到哪些條目（不受賽季清單影響）。
+    /// 設定頁用它來即時標出「清單裡打錯的名字」。
+    public func exactEntries(for name: String) -> [PokedexEntry] {
+        exactIndex[Pokedex.normalize(name)] ?? []
+    }
+
+    public func clearPool() { setPool(nil) }
+
+    public var currentPool: SeasonPool? {
+        poolLock.lock()
+        defer { poolLock.unlock() }
         return pool
     }
 
-    public func clearPool() { pool = nil }
-    public var currentPool: SeasonPool? { pool }
-
-    private var candidates: [PokedexEntry] { pool?.entries ?? entries }
+    private func setPool(_ newPool: SeasonPool?) {
+        poolLock.lock()
+        pool = newPool
+        poolLock.unlock()
+    }
 
     // MARK: - 查詢
 
@@ -131,7 +164,10 @@ public final class Pokedex: @unchecked Sendable {
         let query = Pokedex.normalize(text)
         guard !query.isEmpty else { return [] }
 
-        let allowed: Set<Int>? = pool.map { Set($0.entries.map(\.id)) }
+        // 進場先照一次快照，整趟查詢用同一份清單 —— 過程中換 pool 不會撕裂結果。
+        let activePool = currentPool
+        let allowed: Set<Int>? = activePool.map { Set($0.entries.map(\.id)) }
+        let candidates = activePool?.entries ?? entries
 
         let exact = (exactIndex[query] ?? []).filter { allowed?.contains($0.id) ?? true }
         if !exact.isEmpty {
@@ -141,13 +177,15 @@ public final class Pokedex: @unchecked Sendable {
             )
         }
 
-        let queryChars = Array(query.unicodeScalars)
+        // UTF-16 計量，與 Node 的 charCodeAt 同一種數法 —— 增補平面的漢字（𠮷）
+        // 兩邊才會算出一樣的編輯距離與分數。
+        let queryChars = Array(query.utf16)
         var scored: [PokedexMatch] = []
         for e in candidates {
             for case let key? in [e.zh, e.zhBase, e.en, e.ja] {
                 let norm = Pokedex.normalize(key)
                 guard !norm.isEmpty else { continue }
-                let keyChars = Array(norm.unicodeScalars)
+                let keyChars = Array(norm.utf16)
                 let longest = max(keyChars.count, queryChars.count)
                 let maxDistance = max(1, Int((Double(longest) * (1 - minScore)).rounded(.up)))
                 let d = Pokedex.editDistance(queryChars, keyChars, max: maxDistance)
@@ -198,7 +236,8 @@ public final class Pokedex: @unchecked Sendable {
     // MARK: - 編輯距離
 
     /// 上限式編輯距離：超過 max 就提早收手，掃全圖鑑時省下大量無用計算。
-    static func editDistance(_ a: [Unicode.Scalar], _ b: [Unicode.Scalar], max maxDistance: Int) -> Int {
+    /// 以 UTF-16 code unit 為單位，與 Node 版（charCodeAt）一致。
+    static func editDistance(_ a: [UTF16.CodeUnit], _ b: [UTF16.CodeUnit], max maxDistance: Int) -> Int {
         let al = a.count, bl = b.count
         if abs(al - bl) > maxDistance { return maxDistance + 1 }
         if al == 0 { return bl }

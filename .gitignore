@@ -8,3 +8,15 @@ fixtures/*.png
 fixtures/*.jpg
 fixtures/*.jpeg
 !fixtures/mock-battle.png
+
+# Xcode 專案由 ios/project.yml 生成（xcodegen generate），不進版控。
+# Info.plist 與 .entitlements 也是生成物（project.yml 的 info/entitlements 區塊）。
+ios/PokemonChampion.xcodeproj/
+ios/App/Info.plist
+ios/App/*.entitlements
+ios/BattleWidget/Info.plist
+ios/BattleWidget/*.entitlements
+ios/BroadcastExtension/Info.plist
+ios/BroadcastExtension/*.entitlements
+ios/build/
+DerivedData/
